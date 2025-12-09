@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,11 +6,13 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sparkles, ArrowLeft, Mail, Lock, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Auth() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, signIn, signUp } = useAuth();
   const [isLogin, setIsLogin] = useState(searchParams.get("mode") !== "signup");
   const [isLoading, setIsLoading] = useState(false);
   
@@ -20,19 +22,62 @@ export default function Auth() {
     password: "",
   });
 
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      navigate("/dashboard");
+    }
+  }, [user, navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulate auth - in production this would connect to Supabase
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      if (isLogin) {
+        const { error } = await signIn(formData.email, formData.password);
+        if (error) {
+          toast({
+            variant: "destructive",
+            title: "Erro ao entrar",
+            description: error.message === "Invalid login credentials" 
+              ? "Email ou senha incorretos" 
+              : error.message,
+          });
+        } else {
+          toast({
+            title: "Bem-vindo de volta!",
+            description: "Login realizado com sucesso.",
+          });
+          navigate("/dashboard");
+        }
+      } else {
+        const { error } = await signUp(formData.email, formData.password, formData.name);
+        if (error) {
+          toast({
+            variant: "destructive",
+            title: "Erro ao criar conta",
+            description: error.message === "User already registered"
+              ? "Este email já está cadastrado"
+              : error.message,
+          });
+        } else {
+          toast({
+            title: "Conta criada com sucesso!",
+            description: "Redirecionando para o dashboard...",
+          });
+          navigate("/dashboard");
+        }
+      }
+    } catch (error) {
       toast({
-        title: isLogin ? "Bem-vindo de volta!" : "Conta criada com sucesso!",
-        description: "Redirecionando para o dashboard...",
+        variant: "destructive",
+        title: "Erro",
+        description: "Ocorreu um erro inesperado. Tente novamente.",
       });
-      navigate("/dashboard");
-    }, 1500);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
