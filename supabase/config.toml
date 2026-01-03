@@ -1,1 +1,4 @@
 project_id = "mptcblmtugrcgvlvdjnr"
+
+[functions.generate-landing-page]
+verify_jwt = true
