@@ -17,7 +17,8 @@ import {
   LogOut,
   User,
   Archive,
-  Loader2
+  Loader2,
+  Eye
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -268,21 +269,31 @@ export default function Dashboard() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem className="flex items-center gap-2">
+                              <DropdownMenuItem 
+                                className="flex items-center gap-2 cursor-pointer"
+                                onClick={() => navigate(`/editor/${project.id}`)}
+                              >
                                 <Edit className="h-4 w-4" />
                                 Editar
                               </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                className="flex items-center gap-2 cursor-pointer"
+                                onClick={() => navigate(`/preview/${project.id}`)}
+                              >
+                                <Eye className="h-4 w-4" />
+                                Preview
+                              </DropdownMenuItem>
                               {project.published_cms_url && (
                                 <DropdownMenuItem 
-                                  className="flex items-center gap-2"
+                                  className="flex items-center gap-2 cursor-pointer"
                                   onClick={() => window.open(project.published_cms_url!, '_blank')}
                                 >
                                   <ExternalLink className="h-4 w-4" />
-                                  Visualizar
+                                  Visualizar Site
                                 </DropdownMenuItem>
                               )}
                               <DropdownMenuItem 
-                                className="flex items-center gap-2 text-destructive"
+                                className="flex items-center gap-2 text-destructive cursor-pointer"
                                 onClick={() => handleDelete(project.id, project.title)}
                               >
                                 <Trash2 className="h-4 w-4" />
