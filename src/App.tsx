@@ -9,6 +9,8 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import NewProject from "./pages/NewProject";
+import Editor from "./pages/Editor";
+import Preview from "./pages/Preview";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -31,6 +33,16 @@ const App = () => (
             <Route path="/new-project" element={
               <ProtectedRoute>
                 <NewProject />
+              </ProtectedRoute>
+            } />
+            <Route path="/editor/:id" element={
+              <ProtectedRoute>
+                <Editor />
+              </ProtectedRoute>
+            } />
+            <Route path="/preview/:id" element={
+              <ProtectedRoute>
+                <Preview />
               </ProtectedRoute>
             } />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
