@@ -12,26 +12,35 @@ import {
   FileText, 
   Layout, 
   Palette,
-  Upload,
   X,
   Check,
-  Wand2
+  Wand2,
+  Loader2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { useFileUpload } from "@/hooks/useFileUpload";
+import { createLandingPage, updateLandingPageUrls, generateLandingPage } from "@/services/landingPageService";
 
 type Step = 1 | 2 | 3 | 4;
 
 interface FileUpload {
   file: File;
   preview?: string;
+  uploadedPath?: string;
+  publicUrl?: string;
 }
 
 export default function NewProject() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const { uploadFile, uploading } = useFileUpload();
+  
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [uploadingField, setUploadingField] = useState<string | null>(null);
   
   const [projectData, setProjectData] = useState({
     title: "",
@@ -43,14 +52,50 @@ export default function NewProject() {
 
   const steps = [
     { number: 1, title: "Informações", icon: FileText },
-    { number: 2, title: "Conteúdo", icon: Upload },
+    { number: 2, title: "Conteúdo", icon: Wand2 },
     { number: 3, title: "Design", icon: Palette },
     { number: 4, title: "Gerar", icon: Wand2 },
   ];
 
-  const handleFileUpload = (field: 'contentDoc' | 'wireframe' | 'designInspiration', file: File) => {
+  const handleFileUpload = async (field: 'contentDoc' | 'wireframe' | 'designInspiration', file: File) => {
     const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined;
-    setProjectData({ ...projectData, [field]: { file, preview } });
+    
+    // Set the file immediately for preview
+    setProjectData(prev => ({ ...prev, [field]: { file, preview } }));
+    setUploadingField(field);
+
+    // Map field to bucket
+    const bucketMap: Record<string, 'content-documents' | 'wireframes' | 'design-inspirations'> = {
+      contentDoc: 'content-documents',
+      wireframe: 'wireframes',
+      designInspiration: 'design-inspirations',
+    };
+
+    const result = await uploadFile(file, bucketMap[field]);
+    
+    if (result) {
+      setProjectData(prev => ({
+        ...prev,
+        [field]: { 
+          file, 
+          preview, 
+          uploadedPath: result.path,
+          publicUrl: result.publicUrl 
+        }
+      }));
+      toast({
+        title: "Arquivo enviado!",
+        description: file.name,
+      });
+    } else {
+      toast({
+        title: "Erro ao enviar arquivo",
+        description: "Tente novamente",
+        variant: "destructive",
+      });
+    }
+    
+    setUploadingField(null);
   };
 
   const removeFile = (field: 'contentDoc' | 'wireframe' | 'designInspiration') => {
@@ -61,17 +106,71 @@ export default function NewProject() {
   };
 
   const handleGenerate = async () => {
+    if (!user) {
+      toast({
+        title: "Erro",
+        description: "Você precisa estar logado para gerar uma landing page.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsGenerating(true);
     
-    // Simulate AI generation
-    setTimeout(() => {
-      setIsGenerating(false);
+    try {
+      // 1. Create landing page record
+      const landingPage = await createLandingPage(user.id, projectData.title, projectData.description);
+      
+      if (!landingPage) {
+        throw new Error("Falha ao criar o projeto");
+      }
+
+      // 2. Update with file URLs if any
+      const urls: Record<string, string> = {};
+      if (projectData.contentDoc?.publicUrl) {
+        urls.original_word_doc_url = projectData.contentDoc.publicUrl;
+      }
+      if (projectData.wireframe?.publicUrl) {
+        urls.original_wireframe_url = projectData.wireframe.publicUrl;
+      }
+      if (projectData.designInspiration?.publicUrl) {
+        urls.inspiration_layout_url = projectData.designInspiration.publicUrl;
+      }
+
+      if (Object.keys(urls).length > 0) {
+        await updateLandingPageUrls(landingPage.id, urls);
+      }
+
+      // 3. Call AI generation
+      const result = await generateLandingPage({
+        landingPageId: landingPage.id,
+        title: projectData.title,
+        description: projectData.description,
+        contentDocUrl: projectData.contentDoc?.publicUrl,
+        wireframeUrl: projectData.wireframe?.publicUrl,
+        designInspirationUrl: projectData.designInspiration?.publicUrl,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || "Falha na geração");
+      }
+
       toast({
         title: "Landing page gerada com sucesso!",
-        description: "Você será redirecionado para o editor.",
+        description: "Você será redirecionado para o dashboard.",
       });
+      
       navigate("/dashboard");
-    }, 3000);
+    } catch (error) {
+      console.error("Generation error:", error);
+      toast({
+        title: "Erro ao gerar landing page",
+        description: error instanceof Error ? error.message : "Tente novamente",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const canProceed = () => {
@@ -79,9 +178,9 @@ export default function NewProject() {
       case 1:
         return projectData.title.trim().length > 0;
       case 2:
-        return true; // Content doc is optional
+        return true;
       case 3:
-        return true; // Design files are optional
+        return true;
       case 4:
         return true;
       default:
@@ -214,6 +313,7 @@ export default function NewProject() {
                   icon={FileText}
                   label="Arraste seu documento ou clique para selecionar"
                   hint="Suporta DOC, DOCX, TXT, PDF"
+                  isUploading={uploadingField === 'contentDoc'}
                 />
               </CardContent>
             </Card>
@@ -237,6 +337,7 @@ export default function NewProject() {
                     icon={Layout}
                     label="Arraste sua imagem ou clique para selecionar"
                     hint="Suporta JPG, PNG, GIF"
+                    isUploading={uploadingField === 'wireframe'}
                   />
                 </CardContent>
               </Card>
@@ -257,6 +358,7 @@ export default function NewProject() {
                     icon={Palette}
                     label="Arraste sua imagem ou clique para selecionar"
                     hint="Suporta JPG, PNG, GIF"
+                    isUploading={uploadingField === 'designInspiration'}
                   />
                 </CardContent>
               </Card>
@@ -283,20 +385,47 @@ export default function NewProject() {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Documento de conteúdo</span>
-                    <span className="text-sm font-medium">
-                      {projectData.contentDoc ? projectData.contentDoc.file.name : "Não enviado"}
+                    <span className="text-sm font-medium flex items-center gap-2">
+                      {projectData.contentDoc ? (
+                        <>
+                          {projectData.contentDoc.uploadedPath ? (
+                            <Check className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          )}
+                          {projectData.contentDoc.file.name}
+                        </>
+                      ) : "Não enviado"}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Wireframe</span>
-                    <span className="text-sm font-medium">
-                      {projectData.wireframe ? projectData.wireframe.file.name : "Não enviado"}
+                    <span className="text-sm font-medium flex items-center gap-2">
+                      {projectData.wireframe ? (
+                        <>
+                          {projectData.wireframe.uploadedPath ? (
+                            <Check className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          )}
+                          {projectData.wireframe.file.name}
+                        </>
+                      ) : "Não enviado"}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Inspiração</span>
-                    <span className="text-sm font-medium">
-                      {projectData.designInspiration ? projectData.designInspiration.file.name : "Não enviado"}
+                    <span className="text-sm font-medium flex items-center gap-2">
+                      {projectData.designInspiration ? (
+                        <>
+                          {projectData.designInspiration.uploadedPath ? (
+                            <Check className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          )}
+                          {projectData.designInspiration.file.name}
+                        </>
+                      ) : "Não enviado"}
                     </span>
                   </div>
                 </div>
@@ -306,11 +435,11 @@ export default function NewProject() {
                   size="xl" 
                   className="w-full"
                   onClick={handleGenerate}
-                  disabled={isGenerating}
+                  disabled={isGenerating || uploading}
                 >
                   {isGenerating ? (
                     <>
-                      <div className="h-5 w-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                      <Loader2 className="h-5 w-5 animate-spin" />
                       Gerando sua landing page...
                     </>
                   ) : (
@@ -339,7 +468,7 @@ export default function NewProject() {
               <Button
                 variant="gradient"
                 onClick={() => setCurrentStep((prev) => (prev + 1) as Step)}
-                disabled={!canProceed()}
+                disabled={!canProceed() || uploading}
               >
                 Próximo
                 <ArrowRight className="h-4 w-4" />
@@ -360,9 +489,10 @@ interface FileUploadZoneProps {
   icon: React.ElementType;
   label: string;
   hint: string;
+  isUploading?: boolean;
 }
 
-function FileUploadZone({ accept, file, onUpload, onRemove, icon: Icon, label, hint }: FileUploadZoneProps) {
+function FileUploadZone({ accept, file, onUpload, onRemove, icon: Icon, label, hint, isUploading }: FileUploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -393,10 +523,17 @@ function FileUploadZone({ accept, file, onUpload, onRemove, icon: Icon, label, h
   if (file) {
     return (
       <div className="relative border-2 border-dashed border-accent rounded-xl p-6 bg-accent/5">
+        {isUploading && (
+          <div className="absolute inset-0 bg-background/80 rounded-xl flex items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        )}
+        
         <button
           type="button"
           onClick={onRemove}
-          className="absolute top-2 right-2 p-1.5 rounded-lg bg-card hover:bg-muted transition-colors"
+          className="absolute top-2 right-2 p-1.5 rounded-lg bg-card hover:bg-muted transition-colors z-10"
+          disabled={isUploading}
         >
           <X className="h-4 w-4" />
         </button>
@@ -418,6 +555,13 @@ function FileUploadZone({ accept, file, onUpload, onRemove, icon: Icon, label, h
                 {(file.file.size / 1024 / 1024).toFixed(2)} MB
               </p>
             </div>
+          </div>
+        )}
+        
+        {file.uploadedPath && (
+          <div className="mt-3 flex items-center gap-2 text-sm text-green-600">
+            <Check className="h-4 w-4" />
+            Enviado com sucesso
           </div>
         )}
       </div>
