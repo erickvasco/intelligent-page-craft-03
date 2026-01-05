@@ -16,6 +16,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { WordPressPublishDialog } from "@/components/wordpress/WordPressPublishDialog";
 
 interface Section {
   id: string;
@@ -31,6 +32,7 @@ export default function Preview() {
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [wpDialogOpen, setWpDialogOpen] = useState(false);
   const [landingPage, setLandingPage] = useState<{
     id: string;
     title: string;
@@ -216,6 +218,17 @@ export default function Preview() {
                 <Download className="h-4 w-4" />
                 Exportar
               </Button>
+
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setWpDialogOpen(true)}
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zM3.833 12c0-1.238.276-2.415.766-3.465l4.22 11.56C5.1 18.545 3.833 15.486 3.833 12zm8.167 8.167c-.806 0-1.586-.105-2.33-.302l2.474-7.187 2.535 6.945c.017.04.037.078.06.115a8.148 8.148 0 01-2.739.43zm1.133-12.023c.497-.026.944-.078.944-.078.445-.052.392-.707-.052-.68 0 0-1.34.105-2.205.105-.814 0-2.183-.105-2.183-.105-.445-.026-.497.654-.052.68 0 0 .42.052.865.078l1.284 3.52-1.804 5.41-3.002-8.93c.497-.026.944-.078.944-.078.445-.052.392-.707-.052-.68 0 0-1.34.105-2.205.105-.155 0-.338-.004-.532-.01C6.42 5.128 9.03 3.833 12 3.833c2.214 0 4.23.843 5.748 2.225-.037-.002-.072-.007-.11-.007-.814 0-1.392.707-1.392 1.47 0 .68.392 1.257.814 1.938.314.55.68 1.257.68 2.278 0 .707-.272 1.528-.628 2.67l-.822 2.748-2.98-8.857zm3.67 10.93l2.503-7.237c.467-1.167.627-2.1.627-2.93 0-.302-.02-.582-.057-.848a8.126 8.126 0 011.291 4.374c0 3.306-1.793 6.194-4.363 7.74z"/>
+                </svg>
+                WordPress
+              </Button>
               
               {landingPage?.status !== "published" && (
                 <Button 
@@ -267,6 +280,16 @@ export default function Preview() {
           </Card>
         </div>
       </div>
+
+      {/* WordPress Publish Dialog */}
+      <WordPressPublishDialog
+        open={wpDialogOpen}
+        onOpenChange={setWpDialogOpen}
+        landingPageId={id || ""}
+        title={landingPage?.title || ""}
+        slug={landingPage?.slug || null}
+        htmlContent={previewHtml}
+      />
     </div>
   );
 }

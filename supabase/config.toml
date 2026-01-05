@@ -2,3 +2,6 @@ project_id = "mptcblmtugrcgvlvdjnr"
 
 [functions.generate-landing-page]
 verify_jwt = true
+
+[functions.wordpress-publish]
+verify_jwt = true
