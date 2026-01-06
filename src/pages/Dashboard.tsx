@@ -18,7 +18,8 @@ import {
   User,
   Archive,
   Loader2,
-  Eye
+  Eye,
+  Settings
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -26,6 +27,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -57,6 +68,9 @@ const statusConfig: Record<LandingPageStatus, { label: string; icon: typeof Cloc
 
 export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [selectedPage, setSelectedPage] = useState<{ id: string; title: string } | null>(null);
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -106,6 +120,32 @@ export default function Dashboard() {
     },
   });
 
+  // Archive landing page mutation
+  const archiveMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("landing_pages")
+        .update({ status: "archived" as const })
+        .eq("id", id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["landing-pages"] });
+      toast({
+        title: "Landing page arquivada",
+      });
+      setArchiveDialogOpen(false);
+      setSelectedPage(null);
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao arquivar",
+        variant: "destructive",
+      });
+    },
+  });
+
   const filteredProjects = landingPages.filter(project =>
     project.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -119,9 +159,27 @@ export default function Dashboard() {
     navigate("/");
   };
 
-  const handleDelete = (id: string, title: string) => {
-    if (confirm(`Tem certeza que deseja excluir "${title}"?`)) {
-      deleteMutation.mutate(id);
+  const openDeleteDialog = (id: string, title: string) => {
+    setSelectedPage({ id, title });
+    setDeleteDialogOpen(true);
+  };
+
+  const openArchiveDialog = (id: string, title: string) => {
+    setSelectedPage({ id, title });
+    setArchiveDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (selectedPage) {
+      deleteMutation.mutate(selectedPage.id);
+      setDeleteDialogOpen(false);
+      setSelectedPage(null);
+    }
+  };
+
+  const confirmArchive = () => {
+    if (selectedPage) {
+      archiveMutation.mutate(selectedPage.id);
     }
   };
 
@@ -293,8 +351,15 @@ export default function Dashboard() {
                                 </DropdownMenuItem>
                               )}
                               <DropdownMenuItem 
+                                className="flex items-center gap-2 cursor-pointer"
+                                onClick={() => openArchiveDialog(project.id, project.title)}
+                              >
+                                <Archive className="h-4 w-4" />
+                                Arquivar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
                                 className="flex items-center gap-2 text-destructive cursor-pointer"
-                                onClick={() => handleDelete(project.id, project.title)}
+                                onClick={() => openDeleteDialog(project.id, project.title)}
                               >
                                 <Trash2 className="h-4 w-4" />
                                 Excluir
@@ -318,6 +383,42 @@ export default function Dashboard() {
           </>
         )}
       </main>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir landing page?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir "{selectedPage?.title}"? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Archive Confirmation Dialog */}
+      <AlertDialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Arquivar landing page?</AlertDialogTitle>
+            <AlertDialogDescription>
+              "{selectedPage?.title}" será movida para os arquivados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmArchive}>
+              Arquivar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
