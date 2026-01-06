@@ -15,8 +15,120 @@ interface GenerationRequest {
   designInspirationUrl?: string;
 }
 
+interface SectionContent {
+  headline?: string;
+  subheadline?: string;
+  ctaText?: string;
+  ctaLink?: string;
+  title?: string;
+  subtitle?: string;
+  features?: Array<{ icon?: string; title: string; description: string }>;
+  steps?: Array<{ title: string; description: string }>;
+  testimonials?: Array<{ quote: string; name: string; role?: string }>;
+  copyright?: string;
+}
+
+interface Section {
+  type: "hero" | "features" | "how-it-works" | "testimonials" | "cta" | "footer";
+  content: SectionContent;
+}
+
+interface LandingPageSchema {
+  sections: Section[];
+  metadata: {
+    primaryColor: string;
+    headline: string;
+    subheadline: string;
+  };
+}
+
+// Tool definition for structured output
+const landingPageTool = {
+  type: "function",
+  function: {
+    name: "generate_landing_page",
+    description: "Generates a complete landing page structure with all sections and content.",
+    parameters: {
+      type: "object",
+      properties: {
+        sections: {
+          type: "array",
+          description: "Array of landing page sections in order",
+          items: {
+            type: "object",
+            properties: {
+              type: {
+                type: "string",
+                enum: ["hero", "features", "how-it-works", "testimonials", "cta", "footer"],
+                description: "Type of section"
+              },
+              content: {
+                type: "object",
+                properties: {
+                  headline: { type: "string", description: "Main headline for hero section" },
+                  subheadline: { type: "string", description: "Subheadline or supporting text" },
+                  ctaText: { type: "string", description: "Call to action button text" },
+                  ctaLink: { type: "string", description: "Call to action link" },
+                  title: { type: "string", description: "Section title" },
+                  subtitle: { type: "string", description: "Section subtitle" },
+                  features: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        icon: { type: "string", description: "Emoji icon for the feature" },
+                        title: { type: "string" },
+                        description: { type: "string" }
+                      },
+                      required: ["title", "description"]
+                    }
+                  },
+                  steps: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        title: { type: "string" },
+                        description: { type: "string" }
+                      },
+                      required: ["title", "description"]
+                    }
+                  },
+                  testimonials: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        quote: { type: "string" },
+                        name: { type: "string" },
+                        role: { type: "string" }
+                      },
+                      required: ["quote", "name"]
+                    }
+                  },
+                  copyright: { type: "string", description: "Copyright text for footer" }
+                }
+              }
+            },
+            required: ["type", "content"]
+          }
+        },
+        metadata: {
+          type: "object",
+          properties: {
+            primaryColor: { type: "string", description: "Primary color in hex format (e.g., #6366f1)" },
+            headline: { type: "string", description: "Main headline of the page" },
+            subheadline: { type: "string", description: "Main subheadline" }
+          },
+          required: ["primaryColor", "headline", "subheadline"]
+        }
+      },
+      required: ["sections", "metadata"]
+    }
+  }
+};
+
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -34,47 +146,92 @@ serve(async (req) => {
     const requestData: GenerationRequest = await req.json();
     const { landingPageId, title, description, contentDocUrl, wireframeUrl, designInspirationUrl } = requestData;
 
-    console.log("Generating landing page for:", { landingPageId, title });
+    console.log("Generating landing page for:", { landingPageId, title, wireframeUrl, designInspirationUrl, contentDocUrl });
 
-    // Build the prompt based on available inputs
-    let systemPrompt = `Você é um especialista em criação de landing pages de alta conversão. 
-Sua tarefa é gerar o conteúdo e estrutura HTML de uma landing page moderna e responsiva.
-Use classes do Tailwind CSS para estilização.
-Gere uma estrutura JSON com as seções da landing page e também o HTML completo.`;
+    // Build messages with multimodal support
+    const messages: any[] = [];
 
-    let userPrompt = `Crie uma landing page com as seguintes informações:
+    // System message
+    const systemPrompt = `Você é um especialista em criação de landing pages de alta conversão para o mercado brasileiro.
+    
+Sua tarefa é gerar uma landing page COMPLETA e PERSONALIZADA baseada nas informações fornecidas pelo usuário.
 
-**Título do Projeto:** ${title}
+REGRAS IMPORTANTES:
+1. NUNCA gere conteúdo genérico ou placeholder. Todo texto deve ser específico para o projeto.
+2. Se o usuário fornecer um wireframe ou inspiração visual, analise a ESTRUTURA e LAYOUT da imagem para criar seções correspondentes.
+3. Se o usuário fornecer uma descrição, use-a como base para todo o conteúdo.
+4. Gere headlines persuasivas e copy que converte.
+5. Adapte o número e tipo de seções baseado no contexto do projeto.
+6. Use cores que façam sentido para o nicho do projeto.
+7. Crie pelo menos 3-4 features/benefícios relevantes.
+8. Os testimonials devem parecer reais e específicos ao produto/serviço.
+
+ESTRUTURA DAS SEÇÕES:
+- hero: headline impactante, subheadline persuasiva, CTA claro
+- features: lista de benefícios com ícones (emojis) e descrições
+- how-it-works: passos claros de como funciona
+- testimonials: depoimentos com nome e cargo
+- cta: chamada final para ação
+- footer: copyright e informações legais`;
+
+    messages.push({ role: "system", content: systemPrompt });
+
+    // User message with images if available
+    const userContent: any[] = [];
+
+    // Text content first
+    let textPrompt = `Crie uma landing page completa para o seguinte projeto:
+
+**Título:** ${title}
 ${description ? `**Descrição:** ${description}` : ""}
 
-A landing page deve incluir:
-1. Hero section com headline impactante e CTA
-2. Seção de benefícios/features
-3. Seção de como funciona
-4. Seção de depoimentos (pode ser placeholder)
-5. Seção de CTA final
-6. Footer básico
+`;
 
-${wireframeUrl ? "O usuário enviou um wireframe como referência de layout. Siga a estrutura visual sugerida." : ""}
-${designInspirationUrl ? "O usuário enviou uma imagem de inspiração de design. Inspire-se nas cores e estilo visual." : ""}
-${contentDocUrl ? "O usuário enviou um documento com conteúdo base. Use esse conteúdo como ponto de partida." : ""}
-
-Retorne um JSON válido com a seguinte estrutura:
-{
-  "sections": [
-    {
-      "type": "hero" | "features" | "how-it-works" | "testimonials" | "cta" | "footer",
-      "content": { ... dados específicos da seção ... }
+    if (wireframeUrl) {
+      textPrompt += `\n**IMPORTANTE:** Analise o wireframe/esboço fornecido na imagem. Use a ESTRUTURA e DISPOSIÇÃO dos elementos como guia para organizar as seções da landing page. Identifique quantas seções existem, sua ordem e layout.`;
     }
-  ],
-  "metadata": {
-    "primaryColor": "#hex",
-    "headline": "headline principal",
-    "subheadline": "subheadline"
-  }
-}`;
 
-    // Call Lovable AI Gateway
+    if (designInspirationUrl) {
+      textPrompt += `\n**IMPORTANTE:** Analise a imagem de inspiração fornecida. Extraia as CORES, ESTILO VISUAL e TIPOGRAFIA para aplicar na landing page. Use cores similares no primaryColor.`;
+    }
+
+    if (contentDocUrl) {
+      textPrompt += `\n**IMPORTANTE:** Um documento de conteúdo foi fornecido (${contentDocUrl}). Use o texto e informações desse documento como base para o conteúdo da landing page.`;
+    }
+
+    textPrompt += `\n\nGere a landing page usando a função generate_landing_page. Inclua:
+- Seção hero com headline impactante baseada no título "${title}"
+- Seção de features/benefícios (mínimo 3 itens)
+- Seção como funciona (3-4 passos)
+- Seção de depoimentos (2-3 testimonials)
+- Seção CTA final
+- Footer com copyright`;
+
+    userContent.push({ type: "text", text: textPrompt });
+
+    // Add wireframe image if available
+    if (wireframeUrl) {
+      console.log("Adding wireframe image to prompt:", wireframeUrl);
+      userContent.push({
+        type: "image_url",
+        image_url: { url: wireframeUrl }
+      });
+    }
+
+    // Add design inspiration image if available
+    if (designInspirationUrl) {
+      console.log("Adding design inspiration image to prompt:", designInspirationUrl);
+      userContent.push({
+        type: "image_url",
+        image_url: { url: designInspirationUrl }
+      });
+    }
+
+    messages.push({ role: "user", content: userContent });
+
+    // Call Lovable AI Gateway with tool calling for structured output
+    console.log("Calling AI with tool calling...");
+    
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -83,11 +240,9 @@ Retorne um JSON válido com a seguinte estrutura:
       },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.7,
+        messages: messages,
+        tools: [landingPageTool],
+        tool_choice: { type: "function", function: { name: "generate_landing_page" } },
       }),
     });
 
@@ -108,31 +263,54 @@ Retorne um JSON válido com a seguinte estrutura:
         );
       }
       
-      throw new Error(`AI Gateway error: ${aiResponse.status}`);
+      throw new Error(`AI Gateway error: ${aiResponse.status} - ${errorText}`);
     }
 
     const aiData = await aiResponse.json();
-    const generatedContent = aiData.choices?.[0]?.message?.content;
+    console.log("AI response received");
 
-    console.log("AI generated content length:", generatedContent?.length);
-
-    // Parse the generated content
-    let contentJson = {};
-    let generatedHtml = "";
-
-    try {
-      // Try to extract JSON from the response
-      const jsonMatch = generatedContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        contentJson = JSON.parse(jsonMatch[0]);
+    // Extract structured data from tool call
+    let contentJson: LandingPageSchema | null = null;
+    
+    const toolCalls = aiData.choices?.[0]?.message?.tool_calls;
+    if (toolCalls && toolCalls.length > 0) {
+      const toolCall = toolCalls[0];
+      if (toolCall.function?.name === "generate_landing_page") {
+        try {
+          contentJson = JSON.parse(toolCall.function.arguments);
+          console.log("Successfully parsed tool call response");
+        } catch (parseError) {
+          console.error("Error parsing tool call arguments:", parseError);
+        }
       }
-    } catch (parseError) {
-      console.error("Error parsing AI response as JSON:", parseError);
-      contentJson = { raw: generatedContent };
+    }
+
+    // Fallback: try to extract from message content if tool call failed
+    if (!contentJson) {
+      const messageContent = aiData.choices?.[0]?.message?.content;
+      if (messageContent) {
+        console.log("Trying to extract JSON from message content...");
+        try {
+          const jsonMatch = messageContent.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            contentJson = JSON.parse(jsonMatch[0]);
+            console.log("Extracted JSON from message content");
+          }
+        } catch (parseError) {
+          console.error("Error parsing message content:", parseError);
+        }
+      }
+    }
+
+    // If still no content, create a personalized fallback based on title
+    if (!contentJson || !contentJson.sections || contentJson.sections.length === 0) {
+      console.log("Creating personalized fallback content for:", title);
+      contentJson = createPersonalizedFallback(title, description);
     }
 
     // Generate HTML from the content structure
-    generatedHtml = generateHtmlFromContent(contentJson, title);
+    const generatedHtml = generateHtmlFromContent(contentJson, title);
+    console.log("Generated HTML length:", generatedHtml.length);
 
     // Update the landing page in the database
     const { error: updateError } = await supabase
@@ -170,9 +348,81 @@ Retorne um JSON válido com a seguinte estrutura:
   }
 });
 
-function generateHtmlFromContent(content: any, title: string): string {
+function createPersonalizedFallback(title: string, description?: string): LandingPageSchema {
+  const headline = title;
+  const subheadline = description || `Descubra tudo sobre ${title} e transforme sua experiência`;
+  
+  return {
+    sections: [
+      {
+        type: "hero",
+        content: {
+          headline,
+          subheadline,
+          ctaText: "Começar Agora",
+          ctaLink: "#cta"
+        }
+      },
+      {
+        type: "features",
+        content: {
+          title: "Por que escolher " + title + "?",
+          features: [
+            { icon: "🚀", title: "Rápido e Eficiente", description: "Resultados em tempo recorde com a máxima qualidade." },
+            { icon: "💡", title: "Inovador", description: "Tecnologia de ponta para resolver seus problemas." },
+            { icon: "🎯", title: "Focado em Resultados", description: "Cada detalhe pensado para maximizar seu sucesso." },
+            { icon: "🛡️", title: "Seguro e Confiável", description: "Sua tranquilidade é nossa prioridade." }
+          ]
+        }
+      },
+      {
+        type: "how-it-works",
+        content: {
+          title: "Como Funciona",
+          steps: [
+            { title: "Cadastre-se", description: "Crie sua conta em menos de 2 minutos." },
+            { title: "Configure", description: "Personalize de acordo com suas necessidades." },
+            { title: "Aproveite", description: "Comece a usar e veja os resultados." }
+          ]
+        }
+      },
+      {
+        type: "testimonials",
+        content: {
+          title: "O que nossos clientes dizem",
+          testimonials: [
+            { quote: "Simplesmente transformou a forma como trabalho. Recomendo!", name: "Maria Silva", role: "Empreendedora" },
+            { quote: "Resultado incrível e suporte excepcional.", name: "João Santos", role: "Gerente de Marketing" }
+          ]
+        }
+      },
+      {
+        type: "cta",
+        content: {
+          title: "Pronto para começar?",
+          subtitle: "Junte-se a milhares de pessoas que já estão aproveitando.",
+          ctaText: "Começar Gratuitamente",
+          ctaLink: "#"
+        }
+      },
+      {
+        type: "footer",
+        content: {
+          copyright: `© ${new Date().getFullYear()} ${title}. Todos os direitos reservados.`
+        }
+      }
+    ],
+    metadata: {
+      primaryColor: "#6366f1",
+      headline,
+      subheadline
+    }
+  };
+}
+
+function generateHtmlFromContent(content: LandingPageSchema, title: string): string {
   const sections = content.sections || [];
-  const metadata = content.metadata || {};
+  const metadata = content.metadata || { primaryColor: "#6366f1", headline: title, subheadline: "" };
   const primaryColor = metadata.primaryColor || "#6366f1";
 
   let sectionsHtml = "";
@@ -185,7 +435,7 @@ function generateHtmlFromContent(content: any, title: string): string {
       <div class="max-w-4xl mx-auto text-center">
         <h1 class="text-4xl md:text-6xl font-bold mb-6">${section.content?.headline || metadata.headline || title}</h1>
         <p class="text-xl md:text-2xl mb-8 opacity-90">${section.content?.subheadline || metadata.subheadline || ""}</p>
-        <a href="#cta" class="inline-block bg-white text-indigo-600 px-8 py-4 rounded-full font-semibold text-lg hover:bg-gray-100 transition">
+        <a href="${section.content?.ctaLink || "#cta"}" class="inline-block bg-white text-indigo-600 px-8 py-4 rounded-full font-semibold text-lg hover:bg-gray-100 transition">
           ${section.content?.ctaText || "Começar Agora"}
         </a>
       </div>
@@ -198,7 +448,7 @@ function generateHtmlFromContent(content: any, title: string): string {
     <section class="py-20 px-4 bg-white">
       <div class="max-w-6xl mx-auto">
         <h2 class="text-3xl md:text-4xl font-bold text-center mb-12">${section.content?.title || "Por que escolher?"}</h2>
-        <div class="grid md:grid-cols-3 gap-8">
+        <div class="grid md:grid-cols-${Math.min(features.length, 4)} gap-8">
           ${features.map((f: any) => `
           <div class="text-center p-6">
             <div class="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -238,12 +488,14 @@ function generateHtmlFromContent(content: any, title: string): string {
     <section class="py-20 px-4 bg-white">
       <div class="max-w-6xl mx-auto">
         <h2 class="text-3xl md:text-4xl font-bold text-center mb-12">${section.content?.title || "O que dizem nossos clientes"}</h2>
-        <div class="grid md:grid-cols-2 gap-8">
+        <div class="grid md:grid-cols-${Math.min(testimonials.length, 3)} gap-8">
           ${testimonials.map((t: any) => `
           <div class="bg-gray-50 p-6 rounded-xl">
             <p class="text-gray-700 mb-4">"${t.quote || ""}"</p>
             <div class="flex items-center gap-3">
-              <div class="w-12 h-12 bg-gray-200 rounded-full"></div>
+              <div class="w-12 h-12 bg-indigo-200 rounded-full flex items-center justify-center">
+                <span class="text-indigo-600 font-semibold">${(t.name || "A")[0]}</span>
+              </div>
               <div>
                 <p class="font-semibold">${t.name || "Cliente"}</p>
                 <p class="text-sm text-gray-500">${t.role || ""}</p>
@@ -281,20 +533,12 @@ function generateHtmlFromContent(content: any, title: string): string {
 
   // If no sections were generated, create a basic template
   if (!sectionsHtml) {
+    console.warn("No sections HTML generated - this should not happen!");
     sectionsHtml = `
     <section class="py-20 px-4 bg-gradient-to-br from-indigo-600 to-purple-700 text-white">
       <div class="max-w-4xl mx-auto text-center">
         <h1 class="text-4xl md:text-6xl font-bold mb-6">${title}</h1>
-        <p class="text-xl md:text-2xl mb-8 opacity-90">Sua landing page foi gerada com sucesso!</p>
-        <a href="#" class="inline-block bg-white text-indigo-600 px-8 py-4 rounded-full font-semibold text-lg hover:bg-gray-100 transition">
-          Começar Agora
-        </a>
-      </div>
-    </section>
-    <section class="py-20 px-4 bg-white">
-      <div class="max-w-4xl mx-auto text-center">
-        <h2 class="text-3xl font-bold mb-6">Edite esta página no editor</h2>
-        <p class="text-gray-600">Use o editor visual para personalizar cada seção da sua landing page.</p>
+        <p class="text-xl md:text-2xl mb-8 opacity-90">Sua landing page está sendo preparada...</p>
       </div>
     </section>`;
   }
@@ -305,6 +549,7 @@ function generateHtmlFromContent(content: any, title: string): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
+  <meta name="description" content="${metadata.subheadline || title}">
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     :root {
