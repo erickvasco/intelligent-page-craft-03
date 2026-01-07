@@ -48,45 +48,57 @@ export type Database = {
         Row: {
           content_json: Json | null
           created_at: string
+          doc_text: string | null
           generated_html: string | null
           id: string
           inspiration_layout_url: string | null
+          language: string | null
           original_wireframe_url: string | null
           original_word_doc_url: string | null
           published_cms_url: string | null
           slug: string | null
           status: Database["public"]["Enums"]["landing_page_status"]
+          target_audience: string | null
           title: string
+          tone: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
           content_json?: Json | null
           created_at?: string
+          doc_text?: string | null
           generated_html?: string | null
           id?: string
           inspiration_layout_url?: string | null
+          language?: string | null
           original_wireframe_url?: string | null
           original_word_doc_url?: string | null
           published_cms_url?: string | null
           slug?: string | null
           status?: Database["public"]["Enums"]["landing_page_status"]
+          target_audience?: string | null
           title: string
+          tone?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
           content_json?: Json | null
           created_at?: string
+          doc_text?: string | null
           generated_html?: string | null
           id?: string
           inspiration_layout_url?: string | null
+          language?: string | null
           original_wireframe_url?: string | null
           original_word_doc_url?: string | null
           published_cms_url?: string | null
           slug?: string | null
           status?: Database["public"]["Enums"]["landing_page_status"]
+          target_audience?: string | null
           title?: string
+          tone?: string | null
           updated_at?: string
           user_id?: string
         }
