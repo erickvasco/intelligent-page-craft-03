@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Sparkles, 
   ArrowLeft, 
@@ -22,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { createLandingPage, updateLandingPageUrls, generateLandingPage } from "@/services/landingPageService";
+import { extractTextFromDocx, isDocxFile } from "@/lib/docxExtractor";
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -30,6 +32,7 @@ interface FileUpload {
   preview?: string;
   uploadedPath?: string;
   publicUrl?: string;
+  extractedText?: string;
 }
 
 export default function NewProject() {
@@ -45,6 +48,9 @@ export default function NewProject() {
   const [projectData, setProjectData] = useState({
     title: "",
     description: "",
+    tone: "professional",
+    language: "pt-BR",
+    targetAudience: "",
     contentDoc: null as FileUpload | null,
     wireframe: null as FileUpload | null,
     designInspiration: null as FileUpload | null,
@@ -64,6 +70,25 @@ export default function NewProject() {
     setProjectData(prev => ({ ...prev, [field]: { file, preview } }));
     setUploadingField(field);
 
+    // Extract text from DOCX files
+    let extractedText: string | undefined;
+    if (field === 'contentDoc' && isDocxFile(file)) {
+      try {
+        extractedText = await extractTextFromDocx(file);
+        toast({
+          title: "Texto extraído!",
+          description: `${extractedText.split(/\s+/).length} palavras encontradas`,
+        });
+      } catch (error) {
+        console.error("DOCX extraction error:", error);
+        toast({
+          title: "Aviso",
+          description: "Não foi possível extrair texto do documento",
+          variant: "destructive",
+        });
+      }
+    }
+
     // Map field to bucket
     const bucketMap: Record<string, 'content-documents' | 'wireframes' | 'design-inspirations'> = {
       contentDoc: 'content-documents',
@@ -80,7 +105,8 @@ export default function NewProject() {
           file, 
           preview, 
           uploadedPath: result.path,
-          publicUrl: result.publicUrl 
+          publicUrl: result.publicUrl,
+          extractedText,
         }
       }));
       toast({
@@ -125,20 +151,32 @@ export default function NewProject() {
         throw new Error("Falha ao criar o projeto");
       }
 
-      // 2. Update with file URLs if any
-      const urls: Record<string, string> = {};
+      // 2. Update with file URLs and extra fields
+      const updateData: Record<string, string> = {};
       if (projectData.contentDoc?.publicUrl) {
-        urls.original_word_doc_url = projectData.contentDoc.publicUrl;
+        updateData.original_word_doc_url = projectData.contentDoc.publicUrl;
       }
       if (projectData.wireframe?.publicUrl) {
-        urls.original_wireframe_url = projectData.wireframe.publicUrl;
+        updateData.original_wireframe_url = projectData.wireframe.publicUrl;
       }
       if (projectData.designInspiration?.publicUrl) {
-        urls.inspiration_layout_url = projectData.designInspiration.publicUrl;
+        updateData.inspiration_layout_url = projectData.designInspiration.publicUrl;
+      }
+      if (projectData.contentDoc?.extractedText) {
+        updateData.doc_text = projectData.contentDoc.extractedText;
+      }
+      if (projectData.tone) {
+        updateData.tone = projectData.tone;
+      }
+      if (projectData.language) {
+        updateData.language = projectData.language;
+      }
+      if (projectData.targetAudience) {
+        updateData.target_audience = projectData.targetAudience;
       }
 
-      if (Object.keys(urls).length > 0) {
-        await updateLandingPageUrls(landingPage.id, urls);
+      if (Object.keys(updateData).length > 0) {
+        await updateLandingPageUrls(landingPage.id, updateData);
       }
 
       // 3. Call AI generation
@@ -146,9 +184,13 @@ export default function NewProject() {
         landingPageId: landingPage.id,
         title: projectData.title,
         description: projectData.description,
+        docText: projectData.contentDoc?.extractedText,
         contentDocUrl: projectData.contentDoc?.publicUrl,
         wireframeUrl: projectData.wireframe?.publicUrl,
         designInspirationUrl: projectData.designInspiration?.publicUrl,
+        tone: projectData.tone,
+        language: projectData.language,
+        targetAudience: projectData.targetAudience,
       });
 
       if (!result.success) {
@@ -287,9 +329,58 @@ export default function NewProject() {
                   <Textarea
                     id="description"
                     placeholder="Descreva o objetivo da landing page..."
-                    rows={4}
+                    rows={3}
                     value={projectData.description}
                     onChange={(e) => setProjectData({ ...projectData, description: e.target.value })}
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="tone">Tom de voz</Label>
+                    <Select
+                      value={projectData.tone}
+                      onValueChange={(value) => setProjectData({ ...projectData, tone: value })}
+                    >
+                      <SelectTrigger id="tone">
+                        <SelectValue placeholder="Selecione o tom" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="professional">Profissional</SelectItem>
+                        <SelectItem value="casual">Casual</SelectItem>
+                        <SelectItem value="playful">Divertido</SelectItem>
+                        <SelectItem value="formal">Formal</SelectItem>
+                        <SelectItem value="friendly">Amigável</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="language">Idioma</Label>
+                    <Select
+                      value={projectData.language}
+                      onValueChange={(value) => setProjectData({ ...projectData, language: value })}
+                    >
+                      <SelectTrigger id="language">
+                        <SelectValue placeholder="Selecione o idioma" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pt-BR">Português (BR)</SelectItem>
+                        <SelectItem value="en">Inglês</SelectItem>
+                        <SelectItem value="es">Espanhol</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="targetAudience">Público-alvo (opcional)</Label>
+                  <Textarea
+                    id="targetAudience"
+                    placeholder="Descreva seu público-alvo: idade, interesses, profissão..."
+                    rows={2}
+                    value={projectData.targetAudience}
+                    onChange={(e) => setProjectData({ ...projectData, targetAudience: e.target.value })}
                   />
                 </div>
               </CardContent>

@@ -12,6 +12,7 @@ import NewProject from "./pages/NewProject";
 import Editor from "./pages/Editor";
 import Preview from "./pages/Preview";
 import Settings from "./pages/Settings";
+import PublicLandingPage from "./pages/PublicLandingPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -51,6 +52,8 @@ const App = () => (
                 <Settings />
               </ProtectedRoute>
             } />
+            {/* Public landing page route - no auth required */}
+            <Route path="/p/:slug" element={<PublicLandingPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

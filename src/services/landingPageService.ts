@@ -4,9 +4,13 @@ interface GenerateLandingPageParams {
   landingPageId: string;
   title: string;
   description?: string;
+  docText?: string;
   contentDocUrl?: string;
   wireframeUrl?: string;
   designInspirationUrl?: string;
+  tone?: string;
+  language?: string;
+  targetAudience?: string;
 }
 
 interface GenerationResult {
@@ -90,6 +94,10 @@ export async function updateLandingPageUrls(
     original_word_doc_url?: string;
     original_wireframe_url?: string;
     inspiration_layout_url?: string;
+    doc_text?: string;
+    tone?: string;
+    language?: string;
+    target_audience?: string;
   }
 ): Promise<boolean> {
   try {

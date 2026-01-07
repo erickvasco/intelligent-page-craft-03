@@ -10,9 +10,13 @@ interface GenerationRequest {
   landingPageId: string;
   title: string;
   description?: string;
+  docText?: string;
   contentDocUrl?: string;
   wireframeUrl?: string;
   designInspirationUrl?: string;
+  tone?: string;
+  language?: string;
+  targetAudience?: string;
 }
 
 interface SectionContent {
@@ -144,9 +148,17 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const requestData: GenerationRequest = await req.json();
-    const { landingPageId, title, description, contentDocUrl, wireframeUrl, designInspirationUrl } = requestData;
+    const { 
+      landingPageId, title, description, docText,
+      contentDocUrl, wireframeUrl, designInspirationUrl,
+      tone, language, targetAudience 
+    } = requestData;
 
-    console.log("Generating landing page for:", { landingPageId, title, wireframeUrl, designInspirationUrl, contentDocUrl });
+    console.log("Generating landing page for:", { 
+      landingPageId, title, tone, language, 
+      hasDocText: !!docText, 
+      wireframeUrl, designInspirationUrl, contentDocUrl 
+    });
 
     // Build messages with multimodal support
     const messages: any[] = [];
@@ -179,13 +191,36 @@ ESTRUTURA DAS SEÇÕES:
     // User message with images if available
     const userContent: any[] = [];
 
-    // Text content first
+    // Text content first - build prompt with all available context
+    const toneLabels: Record<string, string> = {
+      professional: "profissional e confiante",
+      casual: "casual e descontraído",
+      playful: "divertido e criativo",
+      formal: "formal e corporativo",
+      friendly: "amigável e acolhedor",
+    };
+    
+    const languageLabels: Record<string, string> = {
+      "pt-BR": "Português do Brasil",
+      "en": "Inglês",
+      "es": "Espanhol",
+    };
+    
     let textPrompt = `Crie uma landing page completa para o seguinte projeto:
 
 **Título:** ${title}
 ${description ? `**Descrição:** ${description}` : ""}
+**Tom de voz:** ${toneLabels[tone || "professional"] || "profissional"}
+**Idioma:** ${languageLabels[language || "pt-BR"] || "Português do Brasil"}
+${targetAudience ? `**Público-alvo:** ${targetAudience}` : ""}
 
 `;
+
+    // Add extracted document content if available
+    if (docText) {
+      const truncatedDocText = docText.length > 8000 ? docText.substring(0, 8000) + "..." : docText;
+      textPrompt += `\n**CONTEÚDO DO DOCUMENTO (use como base para textos):**\n${truncatedDocText}\n`;
+    }
 
     if (wireframeUrl) {
       textPrompt += `\n**IMPORTANTE:** Analise o wireframe/esboço fornecido na imagem. Use a ESTRUTURA e DISPOSIÇÃO dos elementos como guia para organizar as seções da landing page. Identifique quantas seções existem, sua ordem e layout.`;
@@ -195,8 +230,8 @@ ${description ? `**Descrição:** ${description}` : ""}
       textPrompt += `\n**IMPORTANTE:** Analise a imagem de inspiração fornecida. Extraia as CORES, ESTILO VISUAL e TIPOGRAFIA para aplicar na landing page. Use cores similares no primaryColor.`;
     }
 
-    if (contentDocUrl) {
-      textPrompt += `\n**IMPORTANTE:** Um documento de conteúdo foi fornecido (${contentDocUrl}). Use o texto e informações desse documento como base para o conteúdo da landing page.`;
+    if (contentDocUrl && !docText) {
+      textPrompt += `\n**NOTA:** Um documento de conteúdo foi fornecido mas não foi possível extrair o texto. Use o título e descrição como base.`;
     }
 
     textPrompt += `\n\nGere a landing page usando a função generate_landing_page. Inclua:
@@ -205,7 +240,9 @@ ${description ? `**Descrição:** ${description}` : ""}
 - Seção como funciona (3-4 passos)
 - Seção de depoimentos (2-3 testimonials)
 - Seção CTA final
-- Footer com copyright`;
+- Footer com copyright
+
+IMPORTANTE: Todo o conteúdo deve ser escrito em ${languageLabels[language || "pt-BR"] || "Português do Brasil"} com tom ${toneLabels[tone || "professional"] || "profissional"}.`;
 
     userContent.push({ type: "text", text: textPrompt });
 
