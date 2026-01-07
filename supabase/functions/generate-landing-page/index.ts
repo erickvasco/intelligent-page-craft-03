@@ -209,22 +209,32 @@ ${description ? `**Descrição:** ${description}` : ""}
 
     userContent.push({ type: "text", text: textPrompt });
 
-    // Add wireframe image if available
+    // Add wireframe image if available (convert to data URL so the AI gateway can always fetch it)
     if (wireframeUrl) {
-      console.log("Adding wireframe image to prompt:", wireframeUrl);
-      userContent.push({
-        type: "image_url",
-        image_url: { url: wireframeUrl }
-      });
+      try {
+        console.log("Preparing wireframe image for prompt (data URL)...");
+        const dataUrl = await downloadImageAsDataUrlFromStoragePublicUrl(supabase, wireframeUrl);
+        userContent.push({
+          type: "image_url",
+          image_url: { url: dataUrl },
+        });
+      } catch (e) {
+        console.warn("Failed to load wireframe image, continuing without it:", e);
+      }
     }
 
-    // Add design inspiration image if available
+    // Add design inspiration image if available (convert to data URL so the AI gateway can always fetch it)
     if (designInspirationUrl) {
-      console.log("Adding design inspiration image to prompt:", designInspirationUrl);
-      userContent.push({
-        type: "image_url",
-        image_url: { url: designInspirationUrl }
-      });
+      try {
+        console.log("Preparing design inspiration image for prompt (data URL)...");
+        const dataUrl = await downloadImageAsDataUrlFromStoragePublicUrl(supabase, designInspirationUrl);
+        userContent.push({
+          type: "image_url",
+          image_url: { url: dataUrl },
+        });
+      } catch (e) {
+        console.warn("Failed to load inspiration image, continuing without it:", e);
+      }
     }
 
     messages.push({ role: "user", content: userContent });
@@ -347,6 +357,46 @@ ${description ? `**Descrição:** ${description}` : ""}
     );
   }
 });
+
+function parseStoragePublicObjectUrl(storagePublicUrl: string): { bucket: string; path: string } {
+  const u = new URL(storagePublicUrl);
+  const marker = "/storage/v1/object/public/";
+  const idx = u.pathname.indexOf(marker);
+  if (idx === -1) throw new Error("Unsupported storage URL format");
+
+  const rest = u.pathname.slice(idx + marker.length);
+  const [bucket, ...pathParts] = rest.split("/");
+  const path = pathParts.join("/");
+  if (!bucket || !path) throw new Error("Invalid storage URL");
+
+  return { bucket, path: decodeURIComponent(path) };
+}
+
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function downloadImageAsDataUrlFromStoragePublicUrl(
+  supabase: any,
+  storagePublicUrl: string
+): Promise<string> {
+  const { bucket, path } = parseStoragePublicObjectUrl(storagePublicUrl);
+
+  const { data, error } = await supabase.storage.from(bucket).download(path);
+  if (error || !data) {
+    throw new Error(`Failed to download from storage: ${error?.message || "unknown error"}`);
+  }
+
+  const mime = data.type || "image/png";
+  const base64 = arrayBufferToBase64(await data.arrayBuffer());
+  return `data:${mime};base64,${base64}`;
+}
 
 function createPersonalizedFallback(title: string, description?: string): LandingPageSchema {
   const headline = title;
