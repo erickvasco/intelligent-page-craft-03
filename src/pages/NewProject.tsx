@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
 import { 
   Sparkles, 
   ArrowLeft, 
@@ -43,6 +44,7 @@ export default function NewProject() {
   
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStep, setGenerationStep] = useState(0);
   const [uploadingField, setUploadingField] = useState<string | null>(null);
   
   const [projectData, setProjectData] = useState({
@@ -142,9 +144,11 @@ export default function NewProject() {
     }
 
     setIsGenerating(true);
+    setGenerationStep(1);
     
     try {
       // 1. Create landing page record
+      setGenerationStep(1);
       const landingPage = await createLandingPage(user.id, projectData.title, projectData.description);
       
       if (!landingPage) {
@@ -180,6 +184,7 @@ export default function NewProject() {
       }
 
       // 3. Call AI generation
+      setGenerationStep(2);
       const result = await generateLandingPage({
         landingPageId: landingPage.id,
         title: projectData.title,
@@ -197,12 +202,15 @@ export default function NewProject() {
         throw new Error(result.error || "Falha na geração");
       }
 
+      setGenerationStep(3);
+      
       toast({
         title: "Landing page gerada com sucesso!",
-        description: "Você será redirecionado para o dashboard.",
+        description: "Você será redirecionado para o editor.",
       });
       
-      navigate("/dashboard");
+      // Navigate to editor instead of dashboard
+      navigate(`/editor/${landingPage.id}`);
     } catch (error) {
       console.error("Generation error:", error);
       toast({
@@ -212,6 +220,7 @@ export default function NewProject() {
       });
     } finally {
       setIsGenerating(false);
+      setGenerationStep(0);
     }
   };
 
@@ -462,64 +471,118 @@ export default function NewProject() {
                 <div className="w-20 h-20 rounded-2xl bg-gradient-primary flex items-center justify-center mx-auto mb-4 shadow-glow">
                   <Wand2 className="h-10 w-10 text-primary-foreground" />
                 </div>
-                <CardTitle className="text-2xl">Pronto para gerar!</CardTitle>
+                <CardTitle className="text-2xl">
+                  {isGenerating ? "Gerando sua landing page..." : "Pronto para gerar!"}
+                </CardTitle>
                 <CardDescription className="text-base">
-                  Nossa IA vai analisar seus arquivos e criar uma landing page personalizada
+                  {isGenerating 
+                    ? "Aguarde enquanto nossa IA cria sua página"
+                    : "Nossa IA vai analisar seus arquivos e criar uma landing page personalizada"
+                  }
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Summary */}
-                <div className="bg-muted/50 rounded-xl p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Projeto</span>
-                    <span className="text-sm font-medium">{projectData.title}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Documento de conteúdo</span>
-                    <span className="text-sm font-medium flex items-center gap-2">
-                      {projectData.contentDoc ? (
-                        <>
-                          {projectData.contentDoc.uploadedPath ? (
-                            <Check className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                {/* Generation Progress */}
+                {isGenerating && (
+                  <div className="space-y-4">
+                    <div className="relative">
+                      <Progress value={generationStep * 33} className="h-2" />
+                    </div>
+                    <div className="space-y-2">
+                      {[
+                        { step: 1, label: "Criando projeto..." },
+                        { step: 2, label: "Analisando documentos e gerando conteúdo..." },
+                        { step: 3, label: "Finalizando..." },
+                      ].map((item) => (
+                        <div 
+                          key={item.step}
+                          className={cn(
+                            "flex items-center gap-3 p-3 rounded-lg transition-all",
+                            generationStep >= item.step ? "bg-accent/50" : "bg-muted/30",
+                            generationStep === item.step && "ring-2 ring-primary/20"
                           )}
-                          {projectData.contentDoc.file.name}
-                        </>
-                      ) : "Não enviado"}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Wireframe</span>
-                    <span className="text-sm font-medium flex items-center gap-2">
-                      {projectData.wireframe ? (
-                        <>
-                          {projectData.wireframe.uploadedPath ? (
-                            <Check className="h-4 w-4 text-green-500" />
+                        >
+                          {generationStep > item.step ? (
+                            <Check className="h-5 w-5 text-green-500" />
+                          ) : generationStep === item.step ? (
+                            <Loader2 className="h-5 w-5 animate-spin text-primary" />
                           ) : (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/30" />
                           )}
-                          {projectData.wireframe.file.name}
-                        </>
-                      ) : "Não enviado"}
-                    </span>
+                          <span className={cn(
+                            "text-sm",
+                            generationStep >= item.step ? "text-foreground" : "text-muted-foreground"
+                          )}>
+                            {item.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Inspiração</span>
-                    <span className="text-sm font-medium flex items-center gap-2">
-                      {projectData.designInspiration ? (
-                        <>
-                          {projectData.designInspiration.uploadedPath ? (
-                            <Check className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          )}
-                          {projectData.designInspiration.file.name}
-                        </>
-                      ) : "Não enviado"}
-                    </span>
+                )}
+
+                {/* Summary - only show when not generating */}
+                {!isGenerating && (
+                  <div className="bg-muted/50 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Projeto</span>
+                      <span className="text-sm font-medium">{projectData.title}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Tom de voz</span>
+                      <span className="text-sm font-medium capitalize">{projectData.tone}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Idioma</span>
+                      <span className="text-sm font-medium">{projectData.language === 'pt-BR' ? 'Português' : projectData.language}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Documento de conteúdo</span>
+                      <span className="text-sm font-medium flex items-center gap-2">
+                        {projectData.contentDoc ? (
+                          <>
+                            {projectData.contentDoc.uploadedPath ? (
+                              <Check className="h-4 w-4 text-green-500" />
+                            ) : (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            )}
+                            {projectData.contentDoc.file.name}
+                          </>
+                        ) : "Não enviado"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Wireframe</span>
+                      <span className="text-sm font-medium flex items-center gap-2">
+                        {projectData.wireframe ? (
+                          <>
+                            {projectData.wireframe.uploadedPath ? (
+                              <Check className="h-4 w-4 text-green-500" />
+                            ) : (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            )}
+                            {projectData.wireframe.file.name}
+                          </>
+                        ) : "Não enviado"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Inspiração</span>
+                      <span className="text-sm font-medium flex items-center gap-2">
+                        {projectData.designInspiration ? (
+                          <>
+                            {projectData.designInspiration.uploadedPath ? (
+                              <Check className="h-4 w-4 text-green-500" />
+                            ) : (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            )}
+                            {projectData.designInspiration.file.name}
+                          </>
+                        ) : "Não enviado"}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <Button 
                   variant="hero" 
