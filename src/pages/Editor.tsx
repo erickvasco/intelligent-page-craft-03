@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { 
   DndContext, 
@@ -17,27 +17,29 @@ import {
 } from "@dnd-kit/sortable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { 
   ArrowLeft, 
   Save, 
   Eye, 
   Sparkles, 
   GripVertical,
-  Check,
   Loader2,
   Type,
-  Image,
   List,
   MessageSquare,
-  MousePointerClick
+  MousePointerClick,
+  RefreshCw,
+  PanelRightOpen,
+  PanelRightClose
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { SortableSection } from "@/components/editor/SortableSection";
 import { SectionEditor } from "@/components/editor/SectionEditor";
+import { generateLandingPage } from "@/services/landingPageService";
+import { generateHtmlFromSections } from "@/lib/htmlGenerator";
 
 interface Section {
   id: string;
@@ -63,8 +65,16 @@ export default function Editor() {
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(true);
+
+  // Generate preview HTML in real-time
+  const previewHtml = useMemo(() => {
+    const contentJson = { sections, metadata: (landingPage?.content_json as any)?.metadata };
+    return generateHtmlFromSections(contentJson, title);
+  }, [sections, title, landingPage?.content_json]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -224,6 +234,73 @@ export default function Editor() {
     }
   };
 
+  const handleRegenerate = async () => {
+    if (!id || !landingPage) return;
+    
+    setRegenerating(true);
+    try {
+      // Fetch current page data to get original URLs
+      const { data: pageData } = await supabase
+        .from("landing_pages")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (!pageData) throw new Error("Página não encontrada");
+
+      const result = await generateLandingPage({
+        landingPageId: id,
+        title: title,
+        description: (pageData.content_json as any)?.description,
+        docText: pageData.doc_text || undefined,
+        contentDocUrl: pageData.original_word_doc_url || undefined,
+        wireframeUrl: pageData.original_wireframe_url || undefined,
+        designInspirationUrl: pageData.inspiration_layout_url || undefined,
+        tone: pageData.tone || undefined,
+        language: pageData.language || undefined,
+        targetAudience: pageData.target_audience || undefined,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || "Falha ao regenerar");
+      }
+
+      // Reload page data
+      const { data: updatedData } = await supabase
+        .from("landing_pages")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (updatedData) {
+        const contentJson = updatedData.content_json as Record<string, any> | null;
+        if (contentJson?.sections) {
+          setSections(contentJson.sections);
+        }
+        setLandingPage({
+          id: updatedData.id,
+          title: updatedData.title,
+          content_json: contentJson,
+          generated_html: updatedData.generated_html,
+        });
+      }
+
+      toast({
+        title: "Landing page regenerada!",
+        description: "O conteúdo foi atualizado com sucesso.",
+      });
+    } catch (error) {
+      console.error("Regeneration error:", error);
+      toast({
+        title: "Erro ao regenerar",
+        description: error instanceof Error ? error.message : "Tente novamente",
+        variant: "destructive",
+      });
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -264,7 +341,13 @@ export default function Editor() {
               </div>
               
               <div className="flex items-center gap-2">
-                {hasUnsavedChanges && (
+                {regenerating && (
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Regenerando...
+                  </span>
+                )}
+                {hasUnsavedChanges && !regenerating && (
                   <span className="text-xs text-muted-foreground">
                     Alterações não salvas
                   </span>
@@ -276,9 +359,27 @@ export default function Editor() {
                   </span>
                 )}
                 
-                <Button variant="outline" size="sm" onClick={() => handleSave()}>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleRegenerate}
+                  disabled={regenerating || saving}
+                >
+                  <RefreshCw className={`h-4 w-4 ${regenerating ? 'animate-spin' : ''}`} />
+                  Regenerar
+                </Button>
+                
+                <Button variant="outline" size="sm" onClick={() => handleSave()} disabled={saving}>
                   <Save className="h-4 w-4" />
                   Salvar
+                </Button>
+                
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setShowPreview(!showPreview)}
+                >
+                  {showPreview ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
                 </Button>
                 
                 <Button 
@@ -347,7 +448,7 @@ export default function Editor() {
           </div>
 
           {/* Section Editor */}
-          <div className="flex-1 p-6 overflow-y-auto">
+          <div className={`${showPreview ? 'w-1/2' : 'flex-1'} p-6 overflow-y-auto border-r border-border`}>
             {selectedSectionId ? (
               <SectionEditor
                 section={sections.find((s) => s.id === selectedSectionId)!}
@@ -363,6 +464,23 @@ export default function Editor() {
               </div>
             )}
           </div>
+
+          {/* Live Preview Panel */}
+          {showPreview && (
+            <div className="w-1/2 bg-muted/20 flex flex-col">
+              <div className="px-4 py-2 border-b border-border bg-card/50 flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground">Preview em tempo real</span>
+              </div>
+              <div className="flex-1 p-2">
+                <iframe
+                  srcDoc={previewHtml}
+                  className="w-full h-full rounded-lg border border-border bg-white"
+                  title="Preview"
+                  sandbox="allow-scripts"
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
